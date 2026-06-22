@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer glowing halo shield shadow effect -->
+    <path
+        android:fillColor="#153B82F6"
+        android:pathData="M54,12 L20,24 C20,56 34,81 54,96 C74,81 88,56 88,24 Z" />
+
+    <!-- Solid Shield Body -->
+    <path android:pathData="M54,16 L24,26 C24,53 36,75 54,88 C72,75 84,53 84,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="24"
+                android:startY="16"
+                android:endX="84"
+                android:endY="88"
+                android:type="linear">
+                <item
+                    android:color="#3B82F6"
+                    android:offset="0.0" />
+                <item
+                    android:color="#1D4ED8"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inset Shield Detail / border highlight -->
+    <path android:pathData="M54,22 L30,30 C30,51 40,69 54,80 C68,69 78,51 78,30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="22"
+                android:endX="78"
+                android:endY="80"
+                android:type="linear">
+                <item
+                    android:color="#60A5FA"
+                    android:offset="0.0" />
+                <item
+                    android:color="#3B82F6"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Stylized Modern Lock / Keyhole Inner Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,38 A7,7 0 1,0 54,52 A7,7 0 1,0 54,38 Z M50.5,49 L57.5,49 L59.5,67 L48.5,67 Z" />
+</vector>

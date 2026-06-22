@@ -1,0 +1,6 @@
+{
+  "name": "App Locker",
+  "description": "Lock apps in mobile with a custom pattern unlock and secure fingerprint authentication system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
