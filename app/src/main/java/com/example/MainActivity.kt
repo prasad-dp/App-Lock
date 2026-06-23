@@ -20,6 +20,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -49,7 +51,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.BiometricHelper
 import com.example.data.LockPreferences
 import com.example.service.AppLockService
 import com.example.service.AppLockSession
@@ -148,14 +149,7 @@ fun LockerMainScreen(
             },
             modifier = modifier,
             title = "App Locker",
-            subtitle = "Verify credential to manage settings",
-            onBiometricClick = {
-                activity?.let { act ->
-                    BiometricHelper.triggerBiometricPrompt(act, prefs) {
-                        isAppLockerUnlocked = true
-                    }
-                }
-            }
+            subtitle = "Verify credential to manage settings"
         )
     } else {
         AnimatedContent(
@@ -560,7 +554,6 @@ fun DashboardView(
     val isLoadingApps by viewModel.isLoadingApps.collectAsStateWithLifecycle()
 
     var isServiceActiveState by remember { mutableStateOf(viewModel.isServiceActive()) }
-    var isBiometricEnabledState by remember { mutableStateOf(viewModel.isBiometricEnabled()) }
     var isIntruderDetectionEnabledState by remember { mutableStateOf(viewModel.isIntruderDetectionEnabled()) }
     val intruderAlerts by viewModel.intruderAlertsFlow.collectAsStateWithLifecycle()
 
@@ -616,15 +609,6 @@ fun DashboardView(
                     onCancel = {
                         appToVerifyForUnlock = null
                     },
-                    onBiometricClick = {
-                        activity?.let { act ->
-                            BiometricHelper.triggerBiometricPrompt(act, LockPreferences(act)) {
-                                viewModel.toggleAppLock(app.packageName, app.appName, false)
-                                appToVerifyForUnlock = null
-                                Toast.makeText(context, "${app.appName} Unprotected", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
                     title = "Unprotect App",
                     subtitle = "Verify credential to unprotect this application"
                 )
@@ -651,15 +635,6 @@ fun DashboardView(
                     },
                     onCancel = {
                         isVerifyingToReset = false
-                    },
-                    onBiometricClick = {
-                        activity?.let { act ->
-                            BiometricHelper.triggerBiometricPrompt(act, LockPreferences(act)) {
-                                isVerifyingToReset = false
-                                viewModel.resetSetupWizard()
-                                Toast.makeText(context, "Old Lock Cleared. Resetting...", Toast.LENGTH_SHORT).show()
-                            }
-                        }
                     },
                     title = "Confirm Reset",
                     subtitle = "Verify existing credential to clear screen lock"
@@ -692,7 +667,7 @@ fun DashboardView(
         }
     }
 
-    val lockedApps = appGridState.filter { it.isLocked }
+    val lockedApps = remember(appGridState) { appGridState.filter { it.isLocked } }
 
     Column(
         modifier = modifier
@@ -961,41 +936,6 @@ fun DashboardView(
                                     }
                                 },
                                 modifier = Modifier.testTag("service_active_switch")
-                            )
-                        }
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                        // BIOMETRIC TOGGLE
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Biometric Face / Fingerprint Unlock",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = "Use your device's native Face Unlock or Fingerprint scanner to instantly dismiss secure shields",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = isBiometricEnabledState,
-                                onCheckedChange = { fingerprint ->
-                                    isBiometricEnabledState = fingerprint
-                                    viewModel.setBiometricEnabled(fingerprint)
-                                    Toast.makeText(
-                                        context,
-                                        if (fingerprint) "Biometric unlock active" else "Biometric unlock deactivated",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                },
-                                modifier = Modifier.testTag("biometric_active_switch")
                             )
                         }
 
@@ -1385,20 +1325,34 @@ fun DashboardView(
     }
 }
 
+class DrawablePainter(private val drawable: android.graphics.drawable.Drawable) : androidx.compose.ui.graphics.painter.Painter() {
+    override val intrinsicSize: androidx.compose.ui.geometry.Size
+        get() = androidx.compose.ui.geometry.Size(
+            drawable.intrinsicWidth.toFloat().coerceAtLeast(1f),
+            drawable.intrinsicHeight.toFloat().coerceAtLeast(1f)
+        )
+
+    override fun androidx.compose.ui.graphics.drawscope.DrawScope.onDraw() {
+        drawIntoCanvas { canvas ->
+            drawable.setBounds(0, 0, size.width.toInt(), size.height.toInt())
+            drawable.draw(canvas.nativeCanvas)
+        }
+    }
+}
+
 @Composable
 fun AppRowItem(
     appInfo: GridAppInfo,
     onLockToggled: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    var appIcon by remember(appInfo.packageName) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+    var appIcon by remember(appInfo.packageName) { 
+        mutableStateOf<android.graphics.drawable.Drawable?>(AppIconCache.get(appInfo.packageName)) 
+    }
 
     LaunchedEffect(appInfo.packageName) {
-        val cached = AppIconCache.get(appInfo.packageName)
-        if (cached != null) {
-            appIcon = cached
-            return@LaunchedEffect
-        }
+        if (appIcon != null) return@LaunchedEffect
+        
         val pm = context.packageManager
         val icon = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -1409,8 +1363,8 @@ fun AppRowItem(
         }
         if (icon != null) {
             AppIconCache.put(appInfo.packageName, icon)
+            appIcon = icon
         }
-        appIcon = icon
     }
 
     Card(
@@ -1434,10 +1388,11 @@ fun AppRowItem(
                     .padding(4.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (appIcon != null) {
-                    AndroidView(
-                        factory = { ctx -> ImageView(ctx) },
-                        update = { imageView -> imageView.setImageDrawable(appIcon) },
+                val currentIcon = appIcon
+                if (currentIcon != null) {
+                    Image(
+                        painter = DrawablePainter(currentIcon),
+                        contentDescription = "App Icon",
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

@@ -8,14 +8,11 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
@@ -32,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import com.example.data.BiometricHelper
 import com.example.data.LockPreferences
 import com.example.service.AppLockSession
 import com.example.ui.pattern.PatternLockView
@@ -76,9 +72,6 @@ class UnlockActivity : FragmentActivity() {
                         },
                         onCancel = {
                             goToHome()
-                        },
-                        onBiometricClick = {
-                            triggerBiometricPrompt()
                         }
                     )
                 }
@@ -96,13 +89,6 @@ class UnlockActivity : FragmentActivity() {
             AppLockSession.unlockApp(packageArg)
             finish()
             return
-        }
-    }
-
-    fun triggerBiometricPrompt() {
-        BiometricHelper.triggerBiometricPrompt(this, prefs) {
-            targetPackageState.value?.let { AppLockSession.unlockApp(it) }
-            finish()
         }
     }
 

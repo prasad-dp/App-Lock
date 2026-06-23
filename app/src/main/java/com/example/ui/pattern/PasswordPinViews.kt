@@ -99,7 +99,7 @@ fun PinPadView(
             listOf("1", "2", "3"),
             listOf("4", "5", "6"),
             listOf("7", "8", "9"),
-            listOf(if (isBiometricEnabled) "FP" else "", "0", "⌫")
+            listOf("", "0", "⌫")
         )
 
         Column(
@@ -834,7 +834,6 @@ fun LockVerifyScreen(
     modifier: Modifier = Modifier,
     packageName: String = "",
     onCancel: (() -> Unit)? = null,
-    onBiometricClick: (() -> Unit)? = null,
     title: String = "App Lock Security",
     subtitle: String = "Authentication Required"
 ) {
@@ -852,7 +851,7 @@ fun LockVerifyScreen(
 
     var wrongAttemptsCount by remember { mutableStateOf(0) }
     var lockoutSecondsLeft by remember { mutableStateOf(0L) }
-    var showFaceScan by remember { mutableStateOf(prefs.isBiometricEnabled) }
+    val showFaceScan = false
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -905,13 +904,7 @@ fun LockVerifyScreen(
             prefs.lockoutEndTimestamp = System.currentTimeMillis() + 30_000L
             lockoutSecondsLeft = 30
             
-            // Pop up fingerprint and face unlock if available on cooldown onset to allow biometric bypass
-            if (onBiometricClick != null) {
-                coroutineScope.launch {
-                    delay(500)
-                    onBiometricClick.invoke()
-                }
-            }
+            // Biometric bypass disabled per request
         }
     }
 
@@ -928,15 +921,7 @@ fun LockVerifyScreen(
         ) 
     }
 
-    // Safe auto-trigger biometric verification once the view is loaded and settled.
-    // Specifying a delay allows any parent dialog or window entry animations/focus grabs to finish.
-    LaunchedEffect(Unit) {
-        if (prefs.isBiometricEnabled) {
-            delay(400)
-            showFaceScan = true
-            onBiometricClick?.invoke()
-        }
-    }
+    // Auto-trigger biometric verification removed per request
 
     LaunchedEffect(packageName) {
         if (packageName.isNotEmpty()) {
@@ -1114,11 +1099,8 @@ fun LockVerifyScreen(
                         modifier = Modifier.fillMaxWidth(),
                         pinLength = 4,
                         resetIdentifier = pinAndPasswordAttemptId,
-                        isBiometricEnabled = prefs.isBiometricEnabled,
-                        onBiometricClick = {
-                            showFaceScan = true
-                            onBiometricClick?.invoke()
-                        },
+                        isBiometricEnabled = false,
+                        onBiometricClick = null,
                         onPinComplete = { pin ->
                             val savedPin = prefs.savedPasscode
                             if (pin == savedPin) {
@@ -1191,38 +1173,10 @@ fun LockVerifyScreen(
                 }
             }
 
-            if (prefs.isBiometricEnabled && prefs.lockType != "pin") {
-                IconButton(
-                    onClick = {
-                        showFaceScan = true
-                        onBiometricClick?.invoke()
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Fingerprint,
-                        contentDescription = "Trigger Fingerprint Scan",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-            }
+            // Biometric trigger buttons removed
         }
 
-        if (showFaceScan) {
-            FaceScanningBottomSheet(
-                onDismiss = { showFaceScan = false },
-                onSuccess = {
-                    showFaceScan = false
-                    onSuccess()
-                },
-                onUseAlternative = {
-                    showFaceScan = false
-                    onBiometricClick?.invoke()
-                }
-            )
-        }
+
     }
 }
 }
