@@ -900,8 +900,10 @@ fun LockVerifyScreen(
             if (endMillis > currentMillis) {
                 lockoutSecondsLeft = (endMillis - currentMillis + 999) / 1000
             } else {
+                if (lockoutSecondsLeft > 0) {
+                    wrongAttemptsCount = 0 // Reset attempts count upon transition out of lockout cooldown
+                }
                 lockoutSecondsLeft = 0
-                wrongAttemptsCount = 0 // Reset attempts count upon transition out of lockout cooldown
             }
             delay(1000)
         }
