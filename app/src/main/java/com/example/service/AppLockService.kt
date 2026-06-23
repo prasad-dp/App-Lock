@@ -23,6 +23,7 @@ class AppLockService : Service() {
     
     private lateinit var repository: AppRepository
     private val lockedPackages = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val lastSeenForegroundTime = java.util.Collections.synchronizedMap(mutableMapOf<String, Long>())
     
     private val screenLockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -97,16 +98,24 @@ class AppLockService : Service() {
             while (isActive) {
                 try {
                     val currentApp = getForegroundPackageName(usm)
-                    if (currentApp != null && currentApp != packageName) {
-                        // Auto-relock any unlocked app that is no longer in the foreground
-                        val currentUnlockedApps = AppLockSession.getUnlockedAppsCopy()
-                        for (unlockedApp in currentUnlockedApps) {
-                            if (unlockedApp != currentApp) {
+                    if (currentApp != null) {
+                        lastSeenForegroundTime[currentApp] = System.currentTimeMillis()
+                    }
+
+                    // Auto-relock any unlocked app that is no longer in the foreground
+                    val currentUnlockedApps = AppLockSession.getUnlockedAppsCopy()
+                    for (unlockedApp in currentUnlockedApps) {
+                        if (unlockedApp != currentApp) {
+                            val lastSeen = lastSeenForegroundTime[unlockedApp] ?: System.currentTimeMillis()
+                            val outOfForegroundDuration = System.currentTimeMillis() - lastSeen
+                            if (outOfForegroundDuration > 1500) { // 1.5 second grace period to prevent transient lock screens
                                 AppLockSession.lockApp(unlockedApp)
-                                Log.d(TAG, "Auto-relocked app: $unlockedApp because user navigated to $currentApp")
+                                Log.d(TAG, "Auto-relocked app: $unlockedApp because it was out of foreground for $outOfForegroundDuration ms")
                             }
                         }
+                    }
 
+                    if (currentApp != null && currentApp != packageName) {
                         // Check if this package is locked (extremely fast in-memory check)
                         val isLocked = lockedPackages.contains(currentApp)
                         if (isLocked) {
@@ -152,29 +161,45 @@ class AppLockService : Service() {
         
         val event = UsageEvents.Event()
         var lastResumedPackage: String? = null
+        var lastResumedTime = 0L
+        var lastPausedPackage: String? = null
+        var lastPausedTime = 0L
+        var hasEvents = false
 
         while (usageEvents.hasNextEvent()) {
+            hasEvents = true
             usageEvents.getNextEvent(event)
             if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
                 lastResumedPackage = event.packageName
+                lastResumedTime = event.timeStamp
+            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
+                lastPausedPackage = event.packageName
+                lastPausedTime = event.timeStamp
             }
         }
 
+        var isPaused = false
+        if (lastResumedPackage != null && lastPausedPackage == lastResumedPackage && lastPausedTime >= lastResumedTime) {
+            isPaused = true
+        }
+
+        val finalCheckPackage = if (isPaused) null else lastResumedPackage
+
         // Robust fallback: if no event found, check queryUsageStats
-        if (lastResumedPackage == null) {
+        if (finalCheckPackage == null && !hasEvents) {
             try {
                 // Ensure fallback query window spans a full 1 minute
                 val fallbackStart = endTime - 60000
                 val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, fallbackStart, endTime)
                 if (!stats.isNullOrEmpty()) {
                     val sortedStats = stats.sortedByDescending { it.lastTimeUsed }
-                    lastResumedPackage = sortedStats.firstOrNull()?.packageName
+                    return sortedStats.firstOrNull()?.packageName
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed fallback usage stats query", e)
             }
         }
-        return lastResumedPackage
+        return finalCheckPackage
     }
 
     @Suppress("DEPRECATION")

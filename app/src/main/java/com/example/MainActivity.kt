@@ -554,6 +554,7 @@ fun DashboardView(
     val isLoadingApps by viewModel.isLoadingApps.collectAsStateWithLifecycle()
 
     var isServiceActiveState by remember { mutableStateOf(viewModel.isServiceActive()) }
+    var isBiometricEnabledState by remember { mutableStateOf(viewModel.isBiometricEnabled()) }
     var isIntruderDetectionEnabledState by remember { mutableStateOf(viewModel.isIntruderDetectionEnabled()) }
     val intruderAlerts by viewModel.intruderAlertsFlow.collectAsStateWithLifecycle()
 
@@ -936,6 +937,36 @@ fun DashboardView(
                                     }
                                 },
                                 modifier = Modifier.testTag("service_active_switch")
+                            )
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Fingerprint Unlocking",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Allow unlocking applications using your fingerprint scanner",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isBiometricEnabledState,
+                                onCheckedChange = { active ->
+                                    isBiometricEnabledState = active
+                                    viewModel.setBiometricEnabled(active)
+                                    Toast.makeText(context, if (active) "Fingerprint unlock active" else "Fingerprint unlock deactivated", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.testTag("biometric_active_switch")
                             )
                         }
 

@@ -42,6 +42,21 @@ class LockPreferences(context: Context) {
         get() = prefs.getLong("lockout_end_timestamp", 0L)
         set(value) = prefs.edit().putLong("lockout_end_timestamp", value).apply()
 
+    fun getLockoutEndTimestamp(packageName: String): Long {
+        if (packageName.isEmpty()) {
+            return lockoutEndTimestamp
+        }
+        return prefs.getLong("lockout_end_timestamp_$packageName", 0L)
+    }
+
+    fun setLockoutEndTimestamp(packageName: String, value: Long) {
+        if (packageName.isEmpty()) {
+            lockoutEndTimestamp = value
+        } else {
+            prefs.edit().putLong("lockout_end_timestamp_$packageName", value).apply()
+        }
+    }
+
     var isServiceActive: Boolean
         get() = prefs.getBoolean(KEY_SERVICE_ACTIVE, true)
         set(value) = prefs.edit().putBoolean(KEY_SERVICE_ACTIVE, value).apply()

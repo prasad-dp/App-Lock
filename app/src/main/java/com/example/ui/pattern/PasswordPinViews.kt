@@ -41,6 +41,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import android.widget.Toast
 import com.example.data.LockPreferences
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -48,7 +53,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontStyle
-import androidx.core.content.ContextCompat
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 
@@ -99,7 +103,7 @@ fun PinPadView(
             listOf("1", "2", "3"),
             listOf("4", "5", "6"),
             listOf("7", "8", "9"),
-            listOf("", "0", "⌫")
+            listOf(if (isBiometricEnabled) "FP" else "", "0", "⌫")
         )
 
         Column(
@@ -855,7 +859,7 @@ fun LockVerifyScreen(
 
     LaunchedEffect(Unit) {
         while (true) {
-            val endMillis = prefs.lockoutEndTimestamp
+            val endMillis = prefs.getLockoutEndTimestamp(packageName)
             val currentMillis = System.currentTimeMillis()
             if (endMillis > currentMillis) {
                 lockoutSecondsLeft = (endMillis - currentMillis + 999) / 1000
@@ -901,7 +905,7 @@ fun LockVerifyScreen(
 
         // Apply a 30-second security cooldown block on every 3rd wrong attempt
         if (wrongAttemptsCount >= 3) {
-            prefs.lockoutEndTimestamp = System.currentTimeMillis() + 30_000L
+            prefs.setLockoutEndTimestamp(packageName, System.currentTimeMillis() + 30_000L)
             lockoutSecondsLeft = 30
             
             // Biometric bypass disabled per request
@@ -921,7 +925,62 @@ fun LockVerifyScreen(
         ) 
     }
 
-    // Auto-trigger biometric verification removed per request
+    val triggerFingerprintScan = {
+        val fa = context as? FragmentActivity
+        if (fa != null && prefs.isBiometricEnabled) {
+            val biometricManager = BiometricManager.from(fa)
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
+            if (biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS) {
+                val executor = ContextCompat.getMainExecutor(fa)
+                val biometricPrompt = BiometricPrompt(
+                    fa,
+                    executor,
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            super.onAuthenticationError(errorCode, errString)
+                            if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                                Toast.makeText(fa, "Biometric error: $errString", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            super.onAuthenticationSucceeded(result)
+                            patternState = PatternState.SUCCESS
+                            statusText = "Unlock successful!"
+                            coroutineScope.launch {
+                                delay(300)
+                                onSuccess()
+                            }
+                        }
+
+                        override fun onAuthenticationFailed() {
+                            super.onAuthenticationFailed()
+                            Toast.makeText(fa, "Fingerprint verification failed", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+
+                val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(if (appLabel.isNotEmpty()) appLabel else "App Lock")
+                    .setSubtitle("Confirm your fingerprint to unlock")
+                    .setNegativeButtonText("Use alternative lock")
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+
+                try {
+                    biometricPrompt.authenticate(promptInfo)
+                } catch (e: Exception) {
+                    Toast.makeText(fa, "Launch error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (prefs.isBiometricEnabled) {
+            triggerFingerprintScan()
+        }
+    }
 
     LaunchedEffect(packageName) {
         if (packageName.isNotEmpty()) {
@@ -979,6 +1038,7 @@ fun LockVerifyScreen(
                         )
                     )
                 )
+                .safeDrawingPadding()
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -1099,8 +1159,10 @@ fun LockVerifyScreen(
                         modifier = Modifier.fillMaxWidth(),
                         pinLength = 4,
                         resetIdentifier = pinAndPasswordAttemptId,
-                        isBiometricEnabled = false,
-                        onBiometricClick = null,
+                        isBiometricEnabled = prefs.isBiometricEnabled,
+                        onBiometricClick = {
+                            triggerFingerprintScan()
+                        },
                         onPinComplete = { pin ->
                             val savedPin = prefs.savedPasscode
                             if (pin == savedPin) {
