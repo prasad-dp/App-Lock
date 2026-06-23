@@ -20,7 +20,17 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '21'
-        cache: 'gradle'
+
+    - name: Set up Gradle Action caching
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Cache Robolectric Jar Files
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/robolectric
+        key: ${{ runner.os }}-robolectric-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-robolectric-
 
     - name: Set up Environment Config
       run: |
@@ -35,12 +45,22 @@ jobs:
         rm -f gradle/wrapper/gradle-wrapper.jar
         curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar
 
-    - name: Decode Debug Keystore
+    - name: Decode or Generate Debug Keystore
       run: |
         if [ -f debug.keystore.base64 ]; then
+          echo "Decoding debug.keystore.base64..."
           base64 -d debug.keystore.base64 > debug.keystore
         else
-          echo "debug.keystore.base64 not found!"
+          echo "debug.keystore.base64 not found. Generating a new debug.keystore dynamically..."
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
         fi
 
     - name: Grant Execute Permission to Gradlew
@@ -48,6 +68,7 @@ jobs:
 
     - name: Build Debug APK
       run: ./gradlew assembleDebug
+      timeout-minutes: 15
 
     - name: Locate and Upload Debug APK
       uses: actions/upload-artifact@v4
@@ -59,4 +80,5 @@ jobs:
 
     - name: Run Unit & Robolectric Tests
       run: ./gradlew testDebugUnitTest --continue
+      timeout-minutes: 10
       continue-on-error: true
