@@ -44,6 +44,8 @@ class UnlockActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
         enableEdgeToEdge()
 
         val initialPackage = intent.getStringExtra("EXTRA_PACKAGE_NAME")
@@ -77,6 +79,8 @@ class UnlockActivity : FragmentActivity() {
                             targetPackageState.value?.let { AppLockSession.unlockApp(it) }
                             Toast.makeText(this, "Application Unlocked", Toast.LENGTH_SHORT).show()
                             finish()
+                            @Suppress("DEPRECATION")
+                            overridePendingTransition(0, 0)
                         },
                         onCancel = {
                             goToHome()
@@ -115,6 +119,8 @@ class UnlockActivity : FragmentActivity() {
         }
         startActivity(homeIntent)
         finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 }
 

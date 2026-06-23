@@ -145,7 +145,7 @@ class AppLockService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in checking loop", e)
                 }
-                delay(350) // Poll every 350ms - highly responsive yet gentle on the battery
+                delay(100) // Poll every 100ms - ultra-responsive to prevent any target application screen leak
             }
         }
     }
