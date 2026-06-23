@@ -4,6 +4,8 @@ import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -63,7 +66,8 @@ fun PinPadView(
     onPinComplete: (String) -> Unit,
     resetIdentifier: Any? = null,
     isBiometricEnabled: Boolean = false,
-    onBiometricClick: (() -> Unit)? = null
+    onBiometricClick: (() -> Unit)? = null,
+    onCancelClick: (() -> Unit)? = null
 ) {
     var inputtedPin by remember(resetIdentifier) { mutableStateOf("") }
 
@@ -98,34 +102,44 @@ fun PinPadView(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Large Premium Keyboard Layout
+        // Large Premium Keyboard Layout: strictly 3-column layout to align perfectly on all screens
+        val lastRow = if (isBiometricEnabled) {
+            listOf("FP", "0", "⌫")
+        } else if (onCancelClick != null) {
+            listOf("X", "0", "⌫")
+        } else {
+            listOf("", "0", "⌫")
+        }
+
         val keys = listOf(
             listOf("1", "2", "3"),
             listOf("4", "5", "6"),
             listOf("7", "8", "9"),
-            listOf(if (isBiometricEnabled) "FP" else "", "0", "⌫")
+            lastRow
         )
 
         Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             keys.forEach { row ->
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     row.forEach { key ->
                         if (key.isEmpty()) {
                             // Empty Spacer to keep layout structured
-                            Box(modifier = Modifier.size(72.dp))
+                            Box(modifier = Modifier.size(68.dp))
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .size(72.dp)
+                                    .size(68.dp)
                                     .clip(CircleShape)
                                     .background(
                                         when (key) {
                                             "FP" -> MaterialTheme.colorScheme.secondaryContainer
                                             "⌫" -> MaterialTheme.colorScheme.surfaceVariant
+                                            "X" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
                                             else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                         }
                                     )
@@ -138,6 +152,9 @@ fun PinPadView(
                                             }
                                             "FP" -> {
                                                 onBiometricClick?.invoke()
+                                            }
+                                            "X" -> {
+                                                onCancelClick?.invoke()
                                             }
                                             else -> {
                                                 if (inputtedPin.length < pinLength) {
@@ -157,12 +174,20 @@ fun PinPadView(
                                     "⌫" -> Icon(
                                         imageVector = Icons.AutoMirrored.Filled.Backspace,
                                         contentDescription = "Backspace",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp)
                                     )
                                     "FP" -> Icon(
                                         imageVector = Icons.Default.Fingerprint,
                                         contentDescription = "Trigger Biometric Scan",
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                    "X" -> Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cancel/Close",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(24.dp)
                                     )
                                     else -> Text(
                                         text = key,
@@ -431,7 +456,7 @@ fun AndroidBiometricGraphic(
         } else if (isSuccess) {
             val trackRadius = faceRadius * 1.22f
             drawCircle(
-                color = Color(0xFF4CAF50), // Elegant native checkmark green
+                color = Color(0xFF66BB6A), // Elegant native checkmark green
                 radius = trackRadius,
                 center = androidx.compose.ui.geometry.Offset(halfSize, halfSize),
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth * 1.2f)
@@ -439,7 +464,7 @@ fun AndroidBiometricGraphic(
         }
 
         // 3. Draw Inner Face Outline (Circle)
-        val faceColor = if (isSuccess) Color(0xFF4CAF50) else color
+        val faceColor = if (isSuccess) Color(0xFF66BB6A) else color
         drawCircle(
             color = faceColor,
             radius = faceRadius,
@@ -481,7 +506,7 @@ fun AndroidBiometricGraphic(
 
         if (checkmarkProgress > 0.01f) {
             // Animating a clean tick mark (checkmark) inside the circle
-            val checkmarkColor = Color(0xFF4CAF50).copy(alpha = checkmarkProgress)
+            val checkmarkColor = Color(0xFF66BB6A).copy(alpha = checkmarkProgress)
             
             val p0 = androidx.compose.ui.geometry.Offset(halfSize - faceRadius * 0.38f, halfSize + faceRadius * 0.02f)
             val p1 = androidx.compose.ui.geometry.Offset(halfSize - faceRadius * 0.06f, halfSize + faceRadius * 0.32f)
@@ -788,7 +813,7 @@ fun FaceScanningBottomSheet(
                     text = scanStatus,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (detectedFace) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface,
+                    color = if (detectedFace) Color(0xFF66BB6A) else MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
 
@@ -831,6 +856,17 @@ fun FaceScanningBottomSheet(
 
 
 
+private fun android.content.Context.findActivity(): androidx.fragment.app.FragmentActivity? {
+    var cur = this
+    while (cur is android.content.ContextWrapper) {
+        if (cur is androidx.fragment.app.FragmentActivity) {
+            return cur
+        }
+        cur = cur.baseContext
+    }
+    return null
+}
+
 @Composable
 fun LockVerifyScreen(
     prefs: LockPreferences,
@@ -853,11 +889,11 @@ fun LockVerifyScreen(
     var appLabel by remember(packageName) { mutableStateOf("") }
     var appIcon by remember(packageName) { mutableStateOf<Drawable?>(null) }
 
-    var wrongAttemptsCount by remember { mutableStateOf(0) }
-    var lockoutSecondsLeft by remember { mutableStateOf(0L) }
+    var wrongAttemptsCount by remember(packageName) { mutableStateOf(0) }
+    var lockoutSecondsLeft by remember(packageName) { mutableStateOf(0L) }
     val showFaceScan = false
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(packageName) {
         while (true) {
             val endMillis = prefs.getLockoutEndTimestamp(packageName)
             val currentMillis = System.currentTimeMillis()
@@ -865,6 +901,7 @@ fun LockVerifyScreen(
                 lockoutSecondsLeft = (endMillis - currentMillis + 999) / 1000
             } else {
                 lockoutSecondsLeft = 0
+                wrongAttemptsCount = 0 // Reset attempts count upon transition out of lockout cooldown
             }
             delay(1000)
         }
@@ -912,9 +949,9 @@ fun LockVerifyScreen(
         }
     }
 
-    var patternState by remember { mutableStateOf(PatternState.DRAWING) }
-    var pinAndPasswordAttemptId by remember { mutableStateOf(0) }
-    var statusText by remember { 
+    var patternState by remember(packageName) { mutableStateOf(PatternState.DRAWING) }
+    var pinAndPasswordAttemptId by remember(packageName) { mutableStateOf(0) }
+    var statusText by remember(packageName, prefs.lockType) { 
         mutableStateOf(
             when (prefs.lockType) {
                 "pattern" -> "Draw pattern to unlock"
@@ -926,58 +963,64 @@ fun LockVerifyScreen(
     }
 
     val triggerFingerprintScan = {
-        val fa = context as? FragmentActivity
-        if (fa != null && prefs.isBiometricEnabled) {
-            val biometricManager = BiometricManager.from(fa)
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
-            if (biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS) {
-                val executor = ContextCompat.getMainExecutor(fa)
-                val biometricPrompt = BiometricPrompt(
-                    fa,
-                    executor,
-                    object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            super.onAuthenticationError(errorCode, errString)
-                            if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                                Toast.makeText(fa, "Biometric error: $errString", Toast.LENGTH_SHORT).show()
+        val endMillis = prefs.getLockoutEndTimestamp(packageName)
+        if (System.currentTimeMillis() < endMillis) {
+            Toast.makeText(context, "Too many wrong attempts. Fingerprint disabled during cooldown.", Toast.LENGTH_SHORT).show()
+        } else {
+            val fa = context.findActivity()
+            if (fa != null && prefs.isBiometricEnabled) {
+                val biometricManager = BiometricManager.from(fa)
+                val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
+                if (biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS) {
+                    val executor = ContextCompat.getMainExecutor(fa)
+                    val biometricPrompt = BiometricPrompt(
+                        fa,
+                        executor,
+                        object : BiometricPrompt.AuthenticationCallback() {
+                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                super.onAuthenticationError(errorCode, errString)
+                                if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                                    Toast.makeText(fa, "Biometric error: $errString", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+
+                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                super.onAuthenticationSucceeded(result)
+                                patternState = PatternState.SUCCESS
+                                statusText = "Unlock successful!"
+                                coroutineScope.launch {
+                                    delay(300)
+                                    onSuccess()
+                                }
+                            }
+
+                            override fun onAuthenticationFailed() {
+                                super.onAuthenticationFailed()
+                                Toast.makeText(fa, "Fingerprint verification failed", Toast.LENGTH_SHORT).show()
                             }
                         }
+                    )
 
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            super.onAuthenticationSucceeded(result)
-                            patternState = PatternState.SUCCESS
-                            statusText = "Unlock successful!"
-                            coroutineScope.launch {
-                                delay(300)
-                                onSuccess()
-                            }
-                        }
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle(if (appLabel.isNotEmpty()) appLabel else "App Lock")
+                        .setSubtitle("Confirm your fingerprint to unlock")
+                        .setNegativeButtonText("Use alternative lock")
+                        .setAllowedAuthenticators(authenticators)
+                        .build()
 
-                        override fun onAuthenticationFailed() {
-                            super.onAuthenticationFailed()
-                            Toast.makeText(fa, "Fingerprint verification failed", Toast.LENGTH_SHORT).show()
-                        }
+                    try {
+                        biometricPrompt.authenticate(promptInfo)
+                    } catch (e: Exception) {
+                        Toast.makeText(fa, "Launch error: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
-                )
-
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle(if (appLabel.isNotEmpty()) appLabel else "App Lock")
-                    .setSubtitle("Confirm your fingerprint to unlock")
-                    .setNegativeButtonText("Use alternative lock")
-                    .setAllowedAuthenticators(authenticators)
-                    .build()
-
-                try {
-                    biometricPrompt.authenticate(promptInfo)
-                } catch (e: Exception) {
-                    Toast.makeText(fa, "Launch error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (prefs.isBiometricEnabled) {
+    LaunchedEffect(packageName) {
+        val endMillis = prefs.getLockoutEndTimestamp(packageName)
+        if (prefs.isBiometricEnabled && System.currentTimeMillis() >= endMillis) {
             triggerFingerprintScan()
         }
     }
@@ -1027,6 +1070,23 @@ fun LockVerifyScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // Optional Cancel/Close Button in top-left corner
+        if (onCancel != null) {
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+                    .testTag("lock_verify_back_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close/Cancel lock verify screen",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1039,47 +1099,70 @@ fun LockVerifyScreen(
                     )
                 )
                 .safeDrawingPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Large Premium Visual Lock Ring
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (patternState == PatternState.SUCCESS) Icons.Default.LockOpen else Icons.Default.Lock,
-                contentDescription = "Security Active Indicator",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(32.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Dynamic Loading of Application Logo overlay (if present)
+        // Unified Header Icon: Shows App Icon with Lock badge if available, otherwise fallback to premium Lock Ring
         if (packageName.isNotEmpty() && appIcon != null) {
             Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f))
-                    .padding(12.dp),
+                modifier = Modifier.size(80.dp),
                 contentAlignment = Alignment.Center
             ) {
-                AndroidView(
-                    factory = { ctx -> ImageView(ctx) },
-                    update = { imageView -> imageView.setImageDrawable(appIcon) },
-                    modifier = Modifier.fillMaxSize()
+                // App Logo Circle
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx -> ImageView(ctx) },
+                        update = { imageView -> imageView.setImageDrawable(appIcon) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // Small Lock badge overlay on bottom-right of app icon
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .align(Alignment.BottomEnd)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (patternState == PatternState.SUCCESS) Icons.Default.LockOpen else Icons.Default.Lock,
+                        contentDescription = "Lock Badge",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        } else {
+            // Fallback: Large Premium Visual Lock Ring (when verifying central app lock credentials)
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (patternState == PatternState.SUCCESS) Icons.Default.LockOpen else Icons.Default.Lock,
+                    contentDescription = "Security Active Indicator",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(32.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         // Title and Subtitle Block
@@ -1096,7 +1179,7 @@ fun LockVerifyScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Status Feed message
         Text(
@@ -1104,7 +1187,7 @@ fun LockVerifyScreen(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = when (patternState) {
-                PatternState.SUCCESS -> Color(0xFF4CAF50)
+                PatternState.SUCCESS -> Color(0xFF66BB6A)
                 PatternState.ERROR -> MaterialTheme.colorScheme.error
                 PatternState.DRAWING -> MaterialTheme.colorScheme.primary
             },
@@ -1117,7 +1200,6 @@ fun LockVerifyScreen(
         // Main Unlock Component wrapper
         Box(
             modifier = Modifier
-                .weight(5f)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
@@ -1163,6 +1245,7 @@ fun LockVerifyScreen(
                         onBiometricClick = {
                             triggerFingerprintScan()
                         },
+                        onCancelClick = onCancel,
                         onPinComplete = { pin ->
                             val savedPin = prefs.savedPasscode
                             if (pin == savedPin) {
@@ -1217,7 +1300,7 @@ fun LockVerifyScreen(
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Action Buttons Row
         Row(

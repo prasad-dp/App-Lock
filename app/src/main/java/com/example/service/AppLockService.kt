@@ -24,6 +24,7 @@ class AppLockService : Service() {
     private lateinit var repository: AppRepository
     private val lockedPackages = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private val lastSeenForegroundTime = java.util.Collections.synchronizedMap(mutableMapOf<String, Long>())
+    private var lastKnownForegroundPackage: String? = null
     
     private val screenLockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -90,6 +91,7 @@ class AppLockService : Service() {
     private fun startCheckingLoop() {
         serviceScope.launch {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
             if (usm == null) {
                 Log.e(TAG, "UsageStatsManager was not available")
                 return@launch
@@ -97,6 +99,12 @@ class AppLockService : Service() {
 
             while (isActive) {
                 try {
+                    // Battery Saver Optimization: Avoid active polling of usage statistics or locks when screen is off
+                    if (powerManager != null && !powerManager.isInteractive) {
+                        delay(1200) // Sleep peacefully while non-interactive
+                        continue
+                    }
+
                     val currentApp = getForegroundPackageName(usm)
                     if (currentApp != null) {
                         lastSeenForegroundTime[currentApp] = System.currentTimeMillis()
@@ -145,61 +153,65 @@ class AppLockService : Service() {
     private fun getForegroundPackageName(usm: UsageStatsManager): String? {
         val endTime = System.currentTimeMillis()
         
-        // Performance optimization: check the last 3 seconds first to handle current foreground
-        var startTime = endTime - 3000
-        var usageEvents = usm.queryEvents(startTime, endTime)
-        
-        // Fallback to larger windows if no event is found (covers time offset issues or inactive periods)
-        if (!usageEvents.hasNextEvent()) {
-            startTime = endTime - 15000
-            usageEvents = usm.queryEvents(startTime, endTime)
-        }
-        if (!usageEvents.hasNextEvent()) {
-            startTime = endTime - 60000
-            usageEvents = usm.queryEvents(startTime, endTime)
-        }
-        
+        // Use a standard 15-second tracking window, which captures recent transitions flawlessly
+        val startTime = endTime - 15000
+        val usageEvents = try {
+            usm.queryEvents(startTime, endTime)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query usage events", e)
+            null
+        } ?: return null
+
         val event = UsageEvents.Event()
-        var lastResumedPackage: String? = null
-        var lastResumedTime = 0L
-        var lastPausedPackage: String? = null
-        var lastPausedTime = 0L
-        var hasEvents = false
+        val packageStates = mutableMapOf<String, Int>()
+        val packageLastTime = mutableMapOf<String, Long>()
 
         while (usageEvents.hasNextEvent()) {
-            hasEvents = true
             usageEvents.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                lastResumedPackage = event.packageName
-                lastResumedTime = event.timeStamp
-            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
-                lastPausedPackage = event.packageName
-                lastPausedTime = event.timeStamp
+            val pkg = event.packageName ?: continue
+            val type = event.eventType
+            if (type == UsageEvents.Event.ACTIVITY_RESUMED || type == UsageEvents.Event.ACTIVITY_PAUSED) {
+                packageStates[pkg] = type
+                packageLastTime[pkg] = event.timeStamp
             }
         }
 
-        var isPaused = false
-        if (lastResumedPackage != null && lastPausedPackage == lastResumedPackage && lastPausedTime >= lastResumedTime) {
-            isPaused = true
+        // Filter and find apps whose absolute latest event in the log is a RESUME.
+        // This is 100% correct, because any app that was paused cannot be in the foreground.
+        val resumedPackages = packageStates.filter { it.value == UsageEvents.Event.ACTIVITY_RESUMED }
+        if (resumedPackages.isNotEmpty()) {
+            val topPkg = resumedPackages.keys.maxByOrNull { packageLastTime[it] ?: 0L }
+            if (topPkg != null) {
+                lastKnownForegroundPackage = topPkg
+                return topPkg
+            }
         }
 
-        val finalCheckPackage = if (isPaused) null else lastResumedPackage
+        // If there were events but none are currently in the RESUMED state, it means the foreground element 
+        // is likely the system launcher, an unlogged dialogue, or the lock screen.
+        if (packageStates.isNotEmpty()) {
+            lastKnownForegroundPackage = null
+            return null
+        }
 
-        // Robust fallback: if no event found, check queryUsageStats
-        if (finalCheckPackage == null && !hasEvents) {
-            try {
-                // Ensure fallback query window spans a full 1 minute
-                val fallbackStart = endTime - 60000
-                val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, fallbackStart, endTime)
-                if (!stats.isNullOrEmpty()) {
-                    val sortedStats = stats.sortedByDescending { it.lastTimeUsed }
-                    return sortedStats.firstOrNull()?.packageName
+        // Fallback: If there was absolutely ZERO usage event in the last 15 seconds, query active stats,
+        // but only if the highest used app was touched in the last 8 seconds to prevent stale data recurrence.
+        try {
+            val fallbackStart = endTime - 10000
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, fallbackStart, endTime)
+            if (!stats.isNullOrEmpty()) {
+                val sortedStats = stats.sortedByDescending { it.lastTimeUsed }
+                val top = sortedStats.firstOrNull()
+                if (top != null && (endTime - top.lastTimeUsed) < 8000) {
+                    lastKnownForegroundPackage = top.packageName
+                    return top.packageName
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed fallback usage stats query", e)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed fallback usage stats query", e)
         }
-        return finalCheckPackage
+
+        return null
     }
 
     @Suppress("DEPRECATION")

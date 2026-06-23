@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.tween
@@ -55,6 +56,13 @@ class UnlockActivity : FragmentActivity() {
             finish()
             return
         }
+
+        // Modern callback mechanism for intercepting physical back key press and back swipe gestures
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                goToHome()
+            }
+        })
 
         setContent {
             MyApplicationTheme(darkTheme = prefs.isDarkMode) {

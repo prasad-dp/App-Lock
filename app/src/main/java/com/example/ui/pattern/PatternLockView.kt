@@ -1,7 +1,8 @@
 package com.example.ui.pattern
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -11,6 +12,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.dp
 import kotlin.math.sqrt
 
@@ -28,10 +32,11 @@ fun PatternLockView(
 ) {
     val connectedDots = remember { mutableStateListOf<Int>() }
     var currentTouchPosition by remember { mutableStateOf<Offset?>(null) }
+    val haptic = LocalHapticFeedback.current
 
     // Colors
     val primaryColor = MaterialTheme.colorScheme.primary
-    val successColor = Color(0xFF4CAF50)
+    val successColor = Color(0xFF66BB6A)
     val errorColor = MaterialTheme.colorScheme.error
     val dotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
 
@@ -55,8 +60,10 @@ fun PatternLockView(
         // Define coordinates of 3x3 dots
         val margin = sizePx / 6f
         val spacing = (sizePx - 2f * margin) / 2f
-        val dotRadius = 14.dp.value // Base visual radius
-        val detectRadius = 40.dp.value // Radius for touch detection (larger to be user-friendly)
+        
+        val density = LocalDensity.current
+        val dotRadiusPx = with(density) { 14.dp.toPx() } // Correctly scaled visual radius via density
+        val detectRadiusPx = with(density) { 48.dp.toPx() } // Larger touch target radius for responsive unlocking
 
         val dots = remember(sizePx) {
             List(9) { i ->
@@ -75,64 +82,71 @@ fun PatternLockView(
                 .pointerInput(state) {
                     if (state != PatternState.DRAWING) return@pointerInput
 
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            connectedDots.clear()
-                            // Check if initial touch is on any dot
-                            dots.forEachIndexed { index, dot ->
-                                if (getDistance(offset, dot) < detectRadius) {
-                                    connectedDots.add(index)
-                                }
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        connectedDots.clear()
+                        val offset = down.position
+                        
+                        // Check if initial touch is on any dot
+                        dots.forEachIndexed { index, dot ->
+                            if (getDistance(offset, dot) < detectRadiusPx) {
+                                connectedDots.add(index)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
-                            currentTouchPosition = offset
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            val offset = change.position
-                            currentTouchPosition = offset
+                        }
+                        currentTouchPosition = offset
 
-                            dots.forEachIndexed { index, dot ->
-                                if (getDistance(offset, dot) < detectRadius) {
-                                    if (index !in connectedDots) {
-                                        // Auto-add skips (e.g. going from 0 to 2 directly should add 1)
-                                        if (connectedDots.isNotEmpty()) {
-                                            val last = connectedDots.last()
-                                            val lastRow = last / 3
-                                            val lastCol = last % 3
-                                            val currRow = index / 3
-                                            val currCol = index % 3
-                                            
-                                            // Check intermediate
-                                            val midRow = (lastRow + currRow) / 2
-                                            val midCol = (lastCol + currCol) / 2
-                                            val midIndex = midRow * 3 + midCol
-                                            
-                                            if ((lastRow + currRow) % 2 == 0 && (lastCol + currCol) % 2 == 0) {
-                                                if (midIndex !in connectedDots) {
-                                                    connectedDots.add(midIndex)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val anyPressed = event.changes.any { it.pressed }
+                            if (!anyPressed) {
+                                // All touches released -> complete pattern
+                                if (connectedDots.size >= 4) {
+                                    onPatternComplete(connectedDots.toList())
+                                } else if (connectedDots.isNotEmpty()) {
+                                    onPatternComplete(emptyList())
+                                    connectedDots.clear()
+                                }
+                                currentTouchPosition = null
+                                break
+                            }
+
+                            val change = event.changes.firstOrNull()
+                            if (change != null) {
+                                val currentOffset = change.position
+                                currentTouchPosition = currentOffset
+
+                                dots.forEachIndexed { index, dot ->
+                                    if (getDistance(currentOffset, dot) < detectRadiusPx) {
+                                        if (index !in connectedDots) {
+                                            // Auto-add intermediate skips (e.g., going diagonal or jumping over dots)
+                                            if (connectedDots.isNotEmpty()) {
+                                                val last = connectedDots.last()
+                                                val lastRow = last / 3
+                                                val lastCol = last % 3
+                                                val currRow = index / 3
+                                                val currCol = index % 3
+
+                                                val midRow = (lastRow + currRow) / 2
+                                                val midCol = (lastCol + currCol) / 2
+                                                val midIndex = midRow * 3 + midCol
+
+                                                if ((lastRow + currRow) % 2 == 0 && (lastCol + currCol) % 2 == 0) {
+                                                    if (midIndex !in connectedDots) {
+                                                        connectedDots.add(midIndex)
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    }
                                                 }
                                             }
+                                            connectedDots.add(index)
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         }
-                                        connectedDots.add(index)
                                     }
                                 }
+                                change.consume()
                             }
-                        },
-                        onDragEnd = {
-                            if (connectedDots.size >= 4) { // Patterns usually require at least 4 dots
-                                onPatternComplete(connectedDots.toList())
-                            } else if (connectedDots.isNotEmpty()) {
-                                // Too short
-                                onPatternComplete(emptyList())
-                                connectedDots.clear()
-                            }
-                            currentTouchPosition = null
-                        },
-                        onDragCancel = {
-                            connectedDots.clear()
-                            currentTouchPosition = null
                         }
-                    )
+                    }
                 }
         ) {
             // 1. Draw connecting lines
@@ -144,7 +158,7 @@ fun PatternLockView(
                         color = lineColor,
                         start = p1,
                         end = p2,
-                        strokeWidth = 10f,
+                        strokeWidth = 12f, // Slightly thicker line for better visual presence
                         cap = StrokeCap.Round
                     )
                 }
@@ -157,7 +171,7 @@ fun PatternLockView(
                         color = lineColor,
                         start = lastDotPos,
                         end = currentTouch,
-                        strokeWidth = 10f,
+                        strokeWidth = 12f,
                         cap = StrokeCap.Round
                     )
                 }
@@ -171,20 +185,20 @@ fun PatternLockView(
                     // Draw outer translucent glow circle for connected dots
                     drawCircle(
                         color = lineColor.copy(alpha = 0.25f),
-                        radius = dotRadius * 2.5f,
+                        radius = dotRadiusPx * 2.5f,
                         center = dot
                     )
                     // Draw active inner core index
                     drawCircle(
                         color = lineColor,
-                        radius = dotRadius,
+                        radius = dotRadiusPx,
                         center = dot
                     )
                 } else {
                     // Standard inactive dot
                     drawCircle(
                         color = dotColor,
-                        radius = dotRadius * 0.7f,
+                        radius = dotRadiusPx * 0.7f,
                         center = dot
                     )
                 }
