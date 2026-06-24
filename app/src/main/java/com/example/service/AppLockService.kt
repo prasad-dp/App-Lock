@@ -114,9 +114,9 @@ class AppLockService : Service() {
                     val currentUnlockedApps = AppLockSession.getUnlockedAppsCopy()
                     for (unlockedApp in currentUnlockedApps) {
                         if (unlockedApp != currentApp) {
-                            // If it was unlocked within the last 5 seconds, give it a transition grace period
+                            // If it was unlocked within the last 1 second, give it a transition grace period
                             val unlockTime = AppLockSession.getUnlockTime(unlockedApp)
-                            if (System.currentTimeMillis() - unlockTime < 5000) {
+                            if (System.currentTimeMillis() - unlockTime < 1000) {
                                 // Keep lastSeenForegroundTime updated during transition to prevent immediate lock when grace period expires
                                 lastSeenForegroundTime[unlockedApp] = System.currentTimeMillis()
                                 continue
