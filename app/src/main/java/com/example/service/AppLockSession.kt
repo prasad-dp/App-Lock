@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 object AppLockSession {
     // Stores currently unlocked app package names during the current screen-on session
     private val unlockedApps = mutableSetOf<String>()
+    private val unlockTimes = mutableMapOf<String, Long>()
     
     // Track the package we are actively unlocking so we do not launch multiple overlay activities
     var activeUnlockingPackage: String? = null
@@ -24,9 +25,16 @@ object AppLockSession {
         }
     }
 
+    fun getUnlockTime(packageName: String): Long {
+        synchronized(unlockedApps) {
+            return unlockTimes[packageName] ?: 0L
+        }
+    }
+
     fun unlockApp(packageName: String) {
         synchronized(unlockedApps) {
             unlockedApps.add(packageName)
+            unlockTimes[packageName] = System.currentTimeMillis()
         }
         if (activeUnlockingPackage == packageName) {
             activeUnlockingPackage = null
@@ -36,12 +44,14 @@ object AppLockSession {
     fun lockApp(packageName: String) {
         synchronized(unlockedApps) {
             unlockedApps.remove(packageName)
+            unlockTimes.remove(packageName)
         }
     }
 
     fun clearSession() {
         synchronized(unlockedApps) {
             unlockedApps.clear()
+            unlockTimes.clear()
         }
         activeUnlockingPackage = null
     }
