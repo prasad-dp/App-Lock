@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
@@ -78,6 +79,10 @@ object AppIconCache {
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
         enableEdgeToEdge()
 
         setContent {
@@ -674,6 +679,7 @@ fun DashboardView(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
     ) {
         // App Header Toolbar
         Box(
@@ -754,15 +760,47 @@ fun DashboardView(
             }
         }
 
+        // STICKY FILTER SEARCH BOX
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { viewModel.updateSearchQuery(it) },
+                placeholder = { Text("Search system applications...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear research")
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("search_app_text_field"),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                )
+            )
+        }
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(24.dp),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // STEP 1: PERMISSION SHIELD CARD
-            if (!hasUsagePermission) {
+            if (searchQuery.isEmpty()) {
+                // STEP 1: PERMISSION SHIELD CARD
+                if (!hasUsagePermission) {
                 item {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -1243,6 +1281,7 @@ fun DashboardView(
                     }
                 }
             }
+            }
 
             // STEP 4: APPLICATIONS SELECTION SECTION
             item {
@@ -1252,7 +1291,7 @@ fun DashboardView(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Protect Apps",
+                        text = if (searchQuery.isEmpty()) "Protect Apps" else "Search Results",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -1267,32 +1306,6 @@ fun DashboardView(
                         )
                     }
                 }
-            }
-
-            // FILTER APPS SEARCH BOX
-            item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.updateSearchQuery(it) },
-                    placeholder = { Text("Search system applications...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear research")
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("search_app_text_field"),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
             }
 
             // APPLICATIONS LIST
