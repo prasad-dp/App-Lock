@@ -675,6 +675,18 @@ fun DashboardView(
 
     val lockedApps = remember(appGridState) { appGridState.filter { it.isLocked } }
 
+    val onLockToggledRemembered = remember(viewModel) {
+        { appInfo: GridAppInfo, locked: Boolean ->
+            if (!locked) {
+                // Toggling off (Unprotecting) -> Requires credential validation!
+                appToVerifyForUnlock = appInfo
+            } else {
+                // Toggling on (Protecting) does not require validation, lock right away!
+                viewModel.toggleAppLock(appInfo.packageName, appInfo.appName, true)
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1190,17 +1202,23 @@ fun DashboardView(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 intruderAlerts.forEach { alert ->
-                                    val attemptedAppName = remember(alert.attemptedPackage) {
-                                        if (alert.attemptedPackage.isNullOrEmpty()) {
-                                            "App Locker Settings"
-                                        } else {
-                                            try {
-                                                val pm = context.packageManager
-                                                val info = pm.getApplicationInfo(alert.attemptedPackage, 0)
-                                                pm.getApplicationLabel(info).toString()
-                                            } catch (e: Exception) {
-                                                alert.attemptedPackage
+                                    var attemptedAppName by remember(alert.attemptedPackage) {
+                                        mutableStateOf(alert.attemptedPackage ?: "App Locker Settings")
+                                    }
+                                    LaunchedEffect(alert.attemptedPackage) {
+                                        if (!alert.attemptedPackage.isNullOrEmpty()) {
+                                            val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                try {
+                                                    val pm = context.packageManager
+                                                    val info = pm.getApplicationInfo(alert.attemptedPackage, 0)
+                                                    pm.getApplicationLabel(info).toString()
+                                                } catch (e: Exception) {
+                                                    alert.attemptedPackage
+                                                }
                                             }
+                                            attemptedAppName = name
+                                        } else {
+                                            attemptedAppName = "App Locker Settings"
                                         }
                                     }
 
@@ -1353,15 +1371,7 @@ fun DashboardView(
                 items(appGridState, key = { it.packageName }) { appInfo ->
                     AppRowItem(
                         appInfo = appInfo,
-                        onLockToggled = { locked ->
-                            if (!locked) {
-                                // Toggling off (Unprotecting) -> Requires credential validation!
-                                appToVerifyForUnlock = appInfo
-                            } else {
-                                // Toggling on (Protecting) does not require validation, lock right away!
-                                viewModel.toggleAppLock(appInfo.packageName, appInfo.appName, true)
-                            }
-                        }
+                        onLockToggled = onLockToggledRemembered
                     )
                 }
             }
@@ -1387,7 +1397,7 @@ class DrawablePainter(private val drawable: android.graphics.drawable.Drawable) 
 @Composable
 fun AppRowItem(
     appInfo: GridAppInfo,
-    onLockToggled: (Boolean) -> Unit
+    onLockToggled: (GridAppInfo, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var appIcon by remember(appInfo.packageName) { 
@@ -1471,7 +1481,7 @@ fun AppRowItem(
             }
 
             IconButton(
-                onClick = { onLockToggled(!appInfo.isLocked) },
+                onClick = { onLockToggled(appInfo, !appInfo.isLocked) },
                 modifier = Modifier.testTag("lock_toggle_${appInfo.packageName}")
             ) {
                 Icon(

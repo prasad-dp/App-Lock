@@ -103,6 +103,12 @@ class MainActivityViewModel(application: Application) : AndroidViewModel(applica
                     if (packageName == context.packageName) return@mapNotNull null // Don't lock ourselves
                     try {
                         val appLabel = resolveInfo.loadLabel(pm).toString()
+                        try {
+                            val appIcon = resolveInfo.loadIcon(pm)
+                            AppIconCache.put(packageName, appIcon)
+                        } catch (e: Exception) {
+                            // Suppress icon failures and continue loading application names
+                        }
                         Pair(packageName, appLabel)
                     } catch (e: Exception) {
                         null
